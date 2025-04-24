@@ -1,0 +1,99 @@
+import shutil
+from pathlib import Path
+
+# Create a mock project structure and zip it
+base_path = Path("/mnt/data/stock-list-app")
+client_path = base_path / "client"
+server_path = base_path / "server"
+
+# Create directory structure
+(client_path / "src" / "components").mkdir(parents=True, exist_ok=True)
+(client_path / "src" / "pages").mkdir(parents=True, exist_ok=True)
+(client_path / "public").mkdir(parents=True, exist_ok=True)
+
+(server_path / "controllers").mkdir(parents=True, exist_ok=True)
+(server_path / "middleware").mkdir(parents=True, exist_ok=True)
+(server_path / "models").mkdir(parents=True, exist_ok=True)
+(server_path / "routes").mkdir(parents=True, exist_ok=True)
+
+# Create placeholder files
+(client_path / "src" / "App.js").write_text("// App.js placeholder")
+(client_path / "src" / "index.js").write_text("// index.js placeholder")
+(client_path / "tailwind.config.js").write_text("// tailwind.config.js placeholder")
+
+(server_path / "server.js").write_text("// server.js placeholder")
+(server_path / ".env").write_text("PORT=5000\nMONGO_URI=your_mongodb_connection_string\nJWT_SECRET=your_jwt_secret_key")
+
+# Zip the directory
+zip_path = "/mnt/data/stock-list-app.zip"
+shutil.make_archive(zip_path.replace(".zip", ""), 'zip', base_path)
+
+zip_path
+// server/controllers/authController.js
+const User = require('../models/User');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+const register = async (req, res) => {
+  const { name, email, password, role } = req.body;
+
+  try {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) return res.status(400).json({ msg: 'User already exists' });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const newUser = await User.create({
+      name,
+      email,
+      password: hashedPassword,
+      role,
+    });
+
+    res.status(201).json({ msg: 'User registered successfully' });
+  } catch (err) {
+    res.status(500).json({ msg: 'Server error', error: err.message });
+  }
+};
+
+const login = async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ msg: 'Invalid credentials' });
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(400).json({ msg: 'Invalid credentials' });
+
+    const token = jwt.sign(
+      { id: user._id, role: user.role },
+      process.env.JWT_SECRET,
+      { expiresIn: '1d' }
+    );
+
+    res.json({ token, user: { id: user._id, name: user.name, role: user.role } });
+  } catch (err) {
+    res.status(500).json({ msg: 'Server error', error: err.message });
+  }
+};
+
+module.exports = { register, login };
+// server/middleware/authMiddleware.js
+const jwt = require('jsonwebtoken');
+
+const authMiddleware = (req, res, next) => {
+  const token = req.header('Authorization')?.split(' ')[1]; // Bearer token
+
+  if (!token) return res.status(401).json({ msg: 'No token, access denied' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded; // adds user info to req
+    next();
+  } catch (err) {
+    res.status(401).json({ msg: 'Invalid token' });
+  }
+};
+
+module.exports = authMiddleware;
